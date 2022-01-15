@@ -14,6 +14,12 @@ plugins {
 
 java.sourceCompatibility = JavaVersion.VERSION_11
 
+configure<SourceSetContainer> {
+    named("main") {
+        java.srcDir("kotlin/zk_service")
+    }
+}
+
 dependencies {
     // Protobuf Dependencies
     implementation(project(":stub"))

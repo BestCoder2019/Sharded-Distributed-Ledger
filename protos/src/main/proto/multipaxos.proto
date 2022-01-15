@@ -48,6 +48,15 @@ message Commit {
   bytes value = 1;
   int32 instance_no = 3;
 }
+
+message Message {
+  bytes value = 1;
+}
+
+message AckMessage {
+  Ack ack = 1;
+}
+
 service MultiPaxosAcceptorService {
   rpc DoPrepare(Prepare) returns (Promise) {}
   rpc DoAccept(Accept) returns (Accepted) {}
@@ -55,4 +64,8 @@ service MultiPaxosAcceptorService {
 
 service MultiPaxosLearnerService {
   rpc DoCommit(Commit) returns (google.protobuf.Empty) {}
+}
+
+service AtomicBroadcastSequencerService {
+  rpc broadcastMessage(Message) returns (AckMessage) {}
 }

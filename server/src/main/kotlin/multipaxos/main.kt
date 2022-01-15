@@ -2,9 +2,18 @@ package multipaxos
 
 import com.google.protobuf.ByteString
 import com.google.protobuf.kotlin.toByteStringUtf8
+import cs236351.multipaxos.*
 import io.grpc.ManagedChannelBuilder
 import io.grpc.ServerBuilder
+import io.grpc.StatusException
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import zk_service.*
+import java.util.*
+import java.util.concurrent.TimeUnit
 
 val biSerializer = object : ByteStringBiSerializer<String> {
     override fun serialize(obj: String) = obj.toByteStringUtf8()
@@ -36,16 +45,8 @@ suspend fun main(args: Array<String>) = coroutineScope {
         }
         .build()
 
-    // Use the atomic broadcast adapter to use the learner service as an atomic broadcast service
-    val atomicBroadcast = object : AtomicBroadcast<String>(learnerService, biSerializer) {
-        // These are dummy implementations
-        override suspend fun _send(byteString: ByteString) = throw NotImplementedError()
-        override fun _deliver(byteString: ByteString) = listOf(biSerializer(byteString))
-    }
-
-    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
-        server.start()
-    }
+    val zk: ZooKeeperKt = ZookeeperKtClient()
+    val omega = ZooKeeperOmegaFailureDetector.make(id,zk)
 
     // Create channels with clients
     val chans = listOf(8980, 8981, 8982).associateWith {
@@ -53,24 +54,34 @@ suspend fun main(args: Array<String>) = coroutineScope {
     }
 
     /*
-     * Don't forget to add the list of learners to the learner service.
-     * The learner service is a reliable broadcast service and needs to
-     * have a connection with all processes that participate as learners
-     */
-    learnerService.learnerChannels = chans.filterKeys { it != id }.values.toList()
+    * Don't forget to add the list of learners to the learner service.
+    * The learner service is a reliable broadcast service and needs to
+    * have a connection with all processes that participate as learners
+    */
+    learnerService.learnerChannels = chans.filterKeys { it != id }
 
+    // Use the atomic broadcast adapter to use the learner service as an atomic broadcast service
+    val atomicBroadcast = AtomicBroadcastImpl(
+        this,
+        id,
+        chans,
+        biSerializer,
+        omega,
+    )
+
+/*
+    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        server.start()
+    }
+*/
     /*
      * You Should implement an omega failure detector.
      */
-    val omega = object : OmegaFailureDetector<ID> {
-        override val leader: ID get() = id
-        override fun addWatcher(observer: suspend () -> Unit) {}
-    }
 
     // Create a proposer, not that the proposers id's id and
     // the acceptors id's must be all unique (they break symmetry)
     val proposer = Proposer(
-        id = id, omegaFD = omega, scope = this, acceptors = chans,
+        id = id, omegaFD = omega, scope = this, acceptors = chans.filterKeys { it != id },
         thisLearner = learnerService,
     )
 
@@ -83,8 +94,9 @@ suspend fun main(args: Array<String>) = coroutineScope {
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         System.`in`.read()
     }
-    startGeneratingMessages(id, proposer)
+    startGeneratingMessages(id, proposer, true, atomicBroadcast)
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        atomicBroadcast.close()
         server.awaitTermination()
     }
 }
@@ -92,6 +104,8 @@ suspend fun main(args: Array<String>) = coroutineScope {
 private fun CoroutineScope.startGeneratingMessages(
     id: Int,
     proposer: Proposer,
+    useAtomicBroadcast: Boolean = false,
+    atomicBroadcast: AtomicBroadcast<String>,
 ) {
     launch {
         println("Started Generating Messages")
@@ -99,7 +113,11 @@ private fun CoroutineScope.startGeneratingMessages(
             delay(1000)
             val prop = "[Value no $it from $id]".toByteStringUtf8()
                 .also { println("Adding Proposal ${it.toStringUtf8()!!}") }
-            proposer.addProposal(prop)
+            if(useAtomicBroadcast){
+                atomicBroadcast._send(prop)
+            } else {
+                proposer.addProposal(prop)
+            }
         }
     }
 }

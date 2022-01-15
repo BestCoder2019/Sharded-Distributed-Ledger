@@ -37,10 +37,12 @@ class LearnerService(
     }
 
     private var learners: List<LearnerGrpcStub> = emptyList()
-    var learnerChannels: List<ManagedChannel>
-        get() = throw NotImplementedError()
+    var learnersMap: Map<ID,LearnerGrpcStub> = emptyMap()
+    var learnerChannels: Map<ID,ManagedChannel> = emptyMap()
         set(value) {
-            learners = value.map { LearnerGrpcStub(it) }
+            learnersMap = value.mapValues { LearnerGrpcStub(it.value) }
+            learners = learnersMap.values.toList()
+            field = value
         }
 
     private fun `reliable broadcast`(m: Commit) {
