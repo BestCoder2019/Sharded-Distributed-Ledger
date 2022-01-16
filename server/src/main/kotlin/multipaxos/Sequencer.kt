@@ -11,7 +11,7 @@ class SequencerService(
     val proposer: Proposer,
     private val scope: CoroutineScope,
     context: CoroutineContext = paxosThread,
-):  SequencerGrpcImplBase(context){
+) : SequencerGrpcImplBase(context) {
 
     override suspend fun broadcastMessage(request: Message): AckMessage {
         val message: ByteString = request.value

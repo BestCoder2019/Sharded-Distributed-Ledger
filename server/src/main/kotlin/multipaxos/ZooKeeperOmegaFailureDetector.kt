@@ -4,7 +4,7 @@ import kotlinx.coroutines.*
 import org.apache.zookeeper.KeeperException
 import zk_service.*
 
-class ZooKeeperOmegaFailureDetector(
+class ZooKeeperOmegaFailureDetector private constructor(
     val id: ID,
     val zk: ZooKeeperKt
 ) : OmegaFailureDetector<ID> {
@@ -37,8 +37,9 @@ class ZooKeeperOmegaFailureDetector(
     }
 
     companion object {
-        suspend fun make(id: ID, zk: ZooKeeperKt): ZooKeeperOmegaFailureDetector {
+        suspend fun make(id: ID, zk: ZooKeeperKt, groupName: String): ZooKeeperOmegaFailureDetector {
             val zk = zk.usingNamespace("/Election")
+                .usingNamespace("/$groupName")
             zk.create {
                 path = "/${id}-"
                 flags = Ephemeral and Sequential

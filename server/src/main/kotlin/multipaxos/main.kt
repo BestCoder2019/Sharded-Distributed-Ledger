@@ -46,7 +46,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
         .build()
 
     val zk: ZooKeeperKt = ZookeeperKtClient()
-    val omega = ZooKeeperOmegaFailureDetector.make(id,zk)
+    val omega = ZooKeeperOmegaFailureDetector.make(id,zk,"multipaxos_test")
 
     // Create channels with clients
     val chans = listOf(8980, 8981, 8982).associateWith {

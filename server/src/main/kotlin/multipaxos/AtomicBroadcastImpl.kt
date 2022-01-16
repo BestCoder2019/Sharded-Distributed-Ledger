@@ -31,7 +31,7 @@ class AtomicBroadcastImpl(
     )
     val sequencer_service = SequencerService(this_sequencer,scope)
     private val sequencers: Map<ID, SequencerGrpcStub> = (channels.mapValues { (_, v) -> SequencerGrpcStub(v) })
-    val sequencer_server = ServerBuilder.forPort(id)
+    private val sequencer_server = ServerBuilder.forPort(id)
         .apply {
             addService(sequencer_service)
         }
