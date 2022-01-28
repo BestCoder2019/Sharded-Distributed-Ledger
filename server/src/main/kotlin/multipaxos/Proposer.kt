@@ -34,8 +34,14 @@ class Proposer(
 
         init {
             omegaFD.addWatcher {
-                cache = omegaFD.leader
-                chan.send(Unit)
+                if(omegaFD.leader != cache) {
+                    cache = omegaFD.leader
+                    if(cache == id) {
+                        println("I'm the leader now!")
+                        chan.send(Unit)
+                    }
+                }
+                println("leader is $cache")
             }
         }
 

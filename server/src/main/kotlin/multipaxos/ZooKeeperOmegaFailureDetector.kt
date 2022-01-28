@@ -38,8 +38,11 @@ class ZooKeeperOmegaFailureDetector private constructor(
 
     companion object {
         suspend fun make(id: ID, zk: ZooKeeperKt, groupName: String): ZooKeeperOmegaFailureDetector {
-            val zk = zk.usingNamespace("/Election")
-                .usingNamespace("/$groupName")
+            var zk = zk.usingNamespace("/Election")
+            val group_name_path_list = groupName.split('/')
+            for (domain in group_name_path_list) {
+                zk = zk.usingNamespace("/$domain")
+            }
             zk.create {
                 path = "/${id}-"
                 flags = Ephemeral and Sequential
