@@ -10,6 +10,7 @@ plugins {
     kotlin("plugin.spring") version "1.5.30" //  version kotlinVersion
     // kotlin-jpa is wrapped on top of no-arg - https://kotlinlang.org/docs/no-arg-plugin.html#jpa-support
     kotlin("plugin.jpa") version "1.5.30" // version kotlinVersion
+    kotlin("plugin.serialization") version "1.6.10"
 }
 
 java.sourceCompatibility = JavaVersion.VERSION_11
@@ -18,6 +19,10 @@ configure<SourceSetContainer> {
     named("main") {
         java.srcDir("kotlin/zk_service")
     }
+}
+
+repositories {
+    mavenCentral()
 }
 
 dependencies {
@@ -53,6 +58,7 @@ dependencies {
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     runtimeOnly("com.h2database:h2")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2")
 
 }
 

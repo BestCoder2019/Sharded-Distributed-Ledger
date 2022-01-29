@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "cs236351.txmanager";
+
+package cs236351.txmanager;
+
+service LedgerService {
+  rpc Submit (Tx) returns (AckMessage) {}
+  rpc Notify (Tx) returns (google.protobuf.Empty) {}
+  //rpc InsertTx (Transaction) returns (google.protobuf.Empty) {}
+  //rpc ExistsTx (TxId) returns (Exists) {}
+  //rpc GetTx (TxId) returns (Transaction) {}
+  //rpc GetAllTx (google.protobuf.Empty) returns (TransactionList) {}
+}
+
+enum Ack {
+  YES = 0;
+  NO = 1;
+}
+
+message Tr {
+  string address = 1;
+  uint64 coins = 2;
+}
+
+message UTxO {
+  string tx_id = 1;
+  string address = 2;
+  uint64 coins = 3;
+}
+
+message Tx {
+  string tx_id = 1;
+  repeated UTxO inputs = 2;
+  repeated Tr outputs = 3;
+  string timestamp = 4;
+}
+
+message TxList {
+  repeated Tx tx_list = 1;
+}
+
+message AckMessage {
+  Ack ack = 1;
+}
