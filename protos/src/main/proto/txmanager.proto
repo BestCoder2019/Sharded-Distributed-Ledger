@@ -9,17 +9,18 @@ option java_package = "cs236351.txmanager";
 package cs236351.txmanager;
 
 service LedgerService {
-  rpc Submit (Tx) returns (AckMessage) {}
+  rpc Submit (Tx) returns (Tx) {}
   rpc Notify (Tx) returns (google.protobuf.Empty) {}
-  //rpc InsertTx (Transaction) returns (google.protobuf.Empty) {}
-  //rpc ExistsTx (TxId) returns (Exists) {}
-  //rpc GetTx (TxId) returns (Transaction) {}
-  //rpc GetAllTx (google.protobuf.Empty) returns (TransactionList) {}
 }
 
 enum Ack {
   YES = 0;
   NO = 1;
+}
+
+enum TxType {
+  Regular = 0;
+  TransferBased = 1;
 }
 
 message Tr {
@@ -33,11 +34,19 @@ message UTxO {
   uint64 coins = 3;
 }
 
+message RootedTr {
+  string source = 1;
+  string destination = 2;
+  uint64 coins = 3;
+}
+
 message Tx {
   string tx_id = 1;
   repeated UTxO inputs = 2;
   repeated Tr outputs = 3;
   string timestamp = 4;
+  RootedTr rooted_tr = 5;
+  TxType tx_type = 6;
 }
 
 message TxList {

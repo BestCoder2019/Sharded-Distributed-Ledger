@@ -1,5 +1,6 @@
 package transaction_manager
 
+import com.example.api.exception.BadTransactionException
 import com.google.protobuf.Empty
 import com.google.protobuf.empty
 import cs236351.txmanager.*
@@ -10,13 +11,13 @@ import io.grpc.ServerBuilder
 import io.grpc.StatusException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import multipaxos.AtomicBroadcastImpl
 import multipaxos.ZooKeeperOmegaFailureDetector
 import multipaxos.biSerializer
+import org.springframework.http.HttpStatus
 import zk_service.ZooKeeperKt
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
@@ -52,7 +53,7 @@ class LedgerService private constructor(
     context: CoroutineContext = txManagerThread,
 ) : LedgerImplBase(context) {
 
-    private val tx_commit_status_deferreds: ConcurrentMap<TxID, CompletableDeferred<AckMessage>> = ConcurrentHashMap()
+    private val tx_commit_status_deferreds: ConcurrentMap<TxID, CompletableDeferred<Tx>> = ConcurrentHashMap()
     private val tx_commit_sync_channel_mutex: Mutex = Mutex()
     private val shard_tx_repo: TxRepo = TxRepo()
     private val global_tx_repo: TxRepo = TxRepo()
@@ -76,6 +77,14 @@ class LedgerService private constructor(
             addService(this@LedgerService)
         }
         .build()
+
+    private fun populateTxID(tx: Tx) {
+        do {
+            tx.populateID()
+            val cache_result: Tx? = global_tx_repo.getTx(tx.tx_id)
+        } while(((cache_result != null) && (cache_result != tx)) ||
+            tx.inputs.any { it.tx_id == tx.tx_id })
+    }
 
     init {
         shard_memberships.map {
@@ -151,8 +160,8 @@ class LedgerService private constructor(
             }
         }
 
-        suspend fun submitToShard(sender_shard: ShardID, request: cs236351.txmanager.Tx): AckMessage {
-            return contactShard(sender_shard,request,DispatchAction.Submit) as AckMessage
+        suspend fun submitToShard(sender_shard: ShardID, request: cs236351.txmanager.Tx): cs236351.txmanager.Tx {
+            return contactShard(sender_shard,request,DispatchAction.Submit) as cs236351.txmanager.Tx
         }
 
     }
@@ -164,14 +173,20 @@ class LedgerService private constructor(
 
             if(shard_tx_repo.contains(tx.tx_id)) {
                 if(tx_commit_status_deferreds.contains(tx.tx_id)) {
-                    tx_commit_status_deferreds[tx.tx_id]!!.complete(ackMessage { this.ack = Ack.YES })
+                    tx_commit_status_deferreds[tx.tx_id]!!.complete(
+                        try {
+                        shard_tx_repo.getTx(tx.tx_id)!!
+                        } catch (e: Exception) {
+                            println("Internal Error: Tx not found in local shard although it is contained in it!!")
+                            println(e)
+                            Tx()
+                        })
                 continue
                 }
             }
 
-            val sender_address: Address = tx.getSenderAddress()
             val receiver_addresses: List<Address> = tx.getReceiverAddressList()
-            assert((getClientShard(sender_address) == this_shard) ||
+            assert((getClientShard(tx.getSenderAddress()) == this_shard) ||
                     receiver_addresses.map { getClientShard(it) }.contains(this_shard))
 
             try {
@@ -183,67 +198,63 @@ class LedgerService private constructor(
                 println("un-commit status from shard_tx_repo: ${shard_tx_repo.unCommitTransaction(tx)}")
                 println(e)
                 if(tx_commit_status_deferreds.contains(tx.tx_id)) {
-                    tx_commit_status_deferreds[tx.tx_id]!!.complete(ackMessage { this.ack = Ack.NO })
+                    tx_commit_status_deferreds[tx.tx_id]!!.complete(Tx())
                 }
                 continue
             }
-            tx_commit_status_deferreds[tx.tx_id]?.complete(ackMessage { this.ack = Ack.YES })
-
-
+            tx_commit_status_deferreds[tx.tx_id]?.complete(tx)
         }
     }
 
-    override suspend fun submit(request: cs236351.txmanager.Tx): AckMessage {
-        val tx = Tx(
-            request.txId,
-            request.inputsList.map { UTxO(it.txId,it.address,it.coins) },
-            request.outputsList.map { Tr(it.address,it.coins) },
-        )
-        val sender_address: Address = tx.getSenderAddress()
+    override suspend fun submit(request: cs236351.txmanager.Tx): cs236351.txmanager.Tx {
+        val tx = Tx(request)
         val receiver_addresses: List<Address> = tx.getReceiverAddressList()
-        assert(getClientShard(sender_address) == this_shard)
+        assert(getClientShard(tx.getSenderAddress()) == this_shard)
 
         tx_commit_sync_channel_mutex.lock()
         if(shard_tx_repo.contains(tx.tx_id)) {
             tx_commit_sync_channel_mutex.unlock()
-            return ackMessage { this.ack = Ack.YES }
+            return try {
+                shard_tx_repo.getTx(tx.tx_id)!!.getProtoBufferTx()
+            } catch (e: Exception) {
+                println("Internal Error: Tx not found in local shard although it is contained in it!!")
+                println(e)
+                Tx().getProtoBufferTx()
+            }
         }
         if(tx_commit_status_deferreds.contains(tx.tx_id)) {
             tx_commit_sync_channel_mutex.unlock()
             return try {
-                tx_commit_status_deferreds[tx.tx_id]!!.await()
+                tx_commit_status_deferreds[tx.tx_id]!!.await().getProtoBufferTx()
             } catch (e: Exception) {
-                println("tx commit status deferred failed!")
+                println("Tx commit status deferred failed!")
                 println(e)
-                ackMessage { this.ack = Ack.NO }
+                Tx().getProtoBufferTx()
             }
         }
         tx_commit_status_deferreds[tx.tx_id] = CompletableDeferred()
         tx_commit_sync_channel_mutex.unlock()
 
         shard_atomic_broadcast.send(Json.encodeToString(tx))
-        val response: AckMessage = try {
+        val response: Tx = try {
             tx_commit_status_deferreds[tx.tx_id]!!.await()
         } catch (e: Exception) {
-            println("tx commit status deferred failed!")
+            println("Tx commit status deferred failed!")
             println(e)
-            ackMessage { this.ack = Ack.NO }
+            Tx()
         }
-        if(response.ack == Ack.YES) {
+        assert(response.tx_type != TxType.TransferBased)
+        if(response.tx_id.isNotEmpty()) {
             val remote_receiver_shards = receiver_addresses.map { getClientShard(it) }.filter { it != this_shard }.distinct()
-            txDispatcher.notifyShards(remote_receiver_shards,request.run {
-                this.toBuilder().setTimestamp(tx.timestamp).build()
-            })
+            txDispatcher.notifyShards(remote_receiver_shards,response.getProtoBufferTx())
         }
-        return response
+        return response.getProtoBufferTx()
     }
 
     override suspend fun notify(request: cs236351.txmanager.Tx): Empty {
-        val tx = Tx(
-            request.txId,
-            request.inputsList.map { UTxO(it.txId, it.address, it.coins) },
-            request.outputsList.map { Tr(it.address, it.coins) },
-        )
+        assert(request.txType != TxType.TransferBased)
+        val tx = Tx(request)
+        assert(tx.tx_id.isNotEmpty())
         val sender_address: Address = tx.getSenderAddress()
         val reciever_shards: List<ShardID> = tx.getReceiverAddressList().map { getClientShard(it) }
         assert(reciever_shards.contains(this_shard) &&
@@ -253,55 +264,62 @@ class LedgerService private constructor(
         return empty { }
     }
 
-    public suspend fun process(tx: Tx): Boolean {
-        if(!tx.isLegal()) return false
-        val sender_address: Address = tx.getSenderAddress()
-        val sender_shard = getClientShard(sender_address)
-        val receiver_shards: List<ShardID> = tx.getReceiverAddressList().map { getClientShard(it) }
-        val response: AckMessage
-        val request = tx {
-            this.txId = tx.tx_id
-            this.inputs += tx.inputs.map { uTxO {
-                this.txId = it.tx_id
-                this.address = it.address
-                this.coins = it.coins
-            } }
-            this.outputs += tx.outputs.map { tr {
-                this.address = it.address
-                this.coins = it.coins
-            } }
-        }
+    /**
+     * Throws: BadTransactionException in-case the transaction wasn't committed for any reason.
+     *
+     */
+    public suspend fun process(request: Tx): Tx {
+        populateTxID(request)
+        if(!request.isLegal()) throw BadTransactionException(HttpStatus.BAD_REQUEST,"Tx is illegal!")
+
+        val sender_shard = getClientShard(request.getSenderAddress())
+        val receiver_shards: List<ShardID> = request.getReceiverAddressList().map { getClientShard(it) }
+        val response: Tx
+
         if(sender_shard == this_shard) {
-            response = submit(request)
+            response = Tx(submit(request.getProtoBufferTx()))
         } else {
-            response = txDispatcher.submitToShard(sender_shard, request)
-            if(response.ack == Ack.YES) {
+            response = Tx(txDispatcher.submitToShard(sender_shard, request.getProtoBufferTx()))
+            if(response.tx_id.isNotEmpty()) {
                 try {
-                    global_tx_repo.commitTransaction(tx)
+                    global_tx_repo.commitTransaction(response)
                     if(receiver_shards.contains(this_shard)) {
-                        shard_tx_repo.commitTransaction(tx)
+                        shard_tx_repo.commitTransaction(response)
                     }
                 } catch(e: Exception) {
                     println("failed to commit transaction after it was submitted and committed at a remote shard!")
-                    println("un-commit status from global_tx_repo: ${global_tx_repo.unCommitTransaction(tx)}")
+                    println("un-commit status from global_tx_repo: ${global_tx_repo.unCommitTransaction(response)}")
                     if(receiver_shards.contains(this_shard)) {
-                        println("un-commit status from shard_tx_repo: ${shard_tx_repo.unCommitTransaction(tx)}")
+                        println("un-commit status from shard_tx_repo: ${shard_tx_repo.unCommitTransaction(response)}")
                     }
                     println(e)
-                    return false
+                    throw BadTransactionException(HttpStatus.INTERNAL_SERVER_ERROR,"Internal Server Error occurred while" +
+                            " committing the transaction local, after it was accepted at the responsible remote shard!")
                 }
             }
         }
-
-        return response.ack == Ack.YES
+        if(response.tx_id.isNotEmpty()) {
+            return try {
+                getTx(response.tx_id)!!
+            } catch (e: Exception) {
+                println(e)
+                throw BadTransactionException(HttpStatus.INTERNAL_SERVER_ERROR,"Internal Error: Transaction was " +
+                        "committed locally but could not be found in the repo!")
+            }
+        }
+        throw BadTransactionException(HttpStatus.BAD_REQUEST,"Transaction was rejected!")
     }
 
     public fun getClientUTXO(address: Address): List<UTxO> {
         return global_tx_repo.getClientUTXO(address)
     }
 
-    public fun getClientTxHistory(address: Address): TxList {
-        return global_tx_repo.getClientTxHistory(address)
+    public fun getTx(tx_id: TxID): Tx? {
+        return global_tx_repo.getTx(tx_id)
+    }
+
+    public fun getClientTxHistory(address: Address, first_n: Int = -1): TxList {
+        return global_tx_repo.getClientTxHistory(address,first_n)
     }
 
     public fun close() {

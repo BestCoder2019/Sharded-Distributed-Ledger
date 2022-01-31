@@ -69,7 +69,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
         System.`in`.read()
     }
 
-    val utxo_list2 = listOf(UTxO("0x00000000150","198:99:30:1",50))
+    val utxo_list2 = listOf(UTxO(tx1.tx_id,"198:99:30:1",50))
     val tr_list2 = listOf(Tr("198:99:30:1",25),Tr("198:99:30:2",25))
     val tx2 = Tx("0x00000000151",utxo_list2,tr_list2)
 
@@ -79,7 +79,8 @@ suspend fun main(args: Array<String>) = coroutineScope {
         System.`in`.read()
     }
 
-    val utxo_list3 = listOf(UTxO("0x00000000150","198:99:30:1",50))
+    // supposed to fail
+    val utxo_list3 = listOf(UTxO(tx1.tx_id,"198:99:30:1",50))
     val tr_list3 = listOf(Tr("198:99:30:1",25),Tr("198:99:30:2",25))
     val tx3 = Tx("0x00000000152",utxo_list3,tr_list3)
 
@@ -89,17 +90,16 @@ suspend fun main(args: Array<String>) = coroutineScope {
         System.`in`.read()
     }
 
-    val utxo_list4 = listOf(UTxO("0x00000000150","198:99:30:2",25),UTxO("0x00000000151","198:99:30:2",25))
+    val utxo_list4 = listOf(UTxO(tx1.tx_id,"198:99:30:2",25),UTxO(tx2.tx_id,"198:99:30:2",25))
     val tr_list4 = listOf(Tr("198:99:30:1",25),Tr("191:99:30:2",25))
     val tx4 = Tx("0x00000000153",utxo_list4,tr_list4)
     checkTransaction(4,tx4,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
-
 
     withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
         System.`in`.read()
     }
 
-    val utxo_list5 = listOf(UTxO("0x00000000153","191:99:30:2",25))
+    val utxo_list5 = listOf(UTxO(tx4.tx_id,"191:99:30:2",25))
     val tr_list5 = listOf(Tr("192:99:30:1",10),Tr("191:99:30:1",15))
     val tx5 = Tx("0x00000000154",utxo_list5,tr_list5)
     checkTransaction(5,tx5,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
@@ -108,7 +108,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
         System.`in`.read()
     }
 
-    val utxo_list6 = listOf(UTxO("0x00000000154","192:99:30:1",10))
+    val utxo_list6 = listOf(UTxO(tx5.tx_id,"192:99:30:1",10))
     val tr_list6 = listOf(Tr("198:99:30:3",10))
     val tx6 = Tx("0x00000000155",utxo_list6,tr_list6)
     checkTransaction(6,tx6,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
@@ -117,12 +117,40 @@ suspend fun main(args: Array<String>) = coroutineScope {
         System.`in`.read()
     }
 
-    ledger.close()
+    val rooted_tr7 = RootedTr("198:99:30:3","191:99:30:2",5)
+    val tx7 = Tx(rooted_tr7)
+    checkTransaction(7,tx7,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
 
+    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        System.`in`.read()
+    }
+
+    val rooted_tr8 = RootedTr("198:99:30:1","192:99:30:1",50)
+    val tx8 = Tx(rooted_tr8)
+    checkTransaction(8,tx8,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
+
+    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        System.`in`.read()
+    }
+
+    val rooted_tr9 = RootedTr("198:99:30:2","198:99:30:1",1)
+    val tx9 = Tx(rooted_tr9)
+    checkTransaction(9,tx9,ledger,id, listOf("198:99:30:1","198:99:30:2","198:99:30:3","191:99:30:1","191:99:30:2","192:99:30:1"))
+
+    withContext(Dispatchers.IO) { // Operations that block the current thread should be in a IO context
+        System.`in`.read()
+    }
+
+    ledger.close()
 }
 
 suspend fun checkTransaction(tx_id: Int, tx: Tx, ledger: LedgerService, id: ID, clients_to_check_list: List<Address>) {
-    println("tx$tx_id commit status for id=$id is ${ledger.process(tx)}")
+    try {
+        println("tx$tx_id commit status for id=$id is ${ledger.process(tx)}")
+    } catch (e: Exception) {
+        println("tx$tx_id has failed! :(")
+        println(e)
+    }
 
     for(client in clients_to_check_list) {
         println("ledger Tx history for client=$client is ${ledger.getClientTxHistory(client)}")

@@ -1,5 +1,6 @@
 package transaction_manager
 
+import cs236351.txmanager.TxType
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.*
@@ -20,14 +21,70 @@ class TxRepo {
     private val mutex: Mutex = Mutex()
 
     /***
+     * This function finds UTxOs in a deterministic fashion: pick UTxOs in a monotonically increasing order.
+     *
+     * throws: FailedTransactionException in case there's not enough UTxOs. Or failed asserts exception.
+     *         JVM -ea flag should be enabled
+     *
+     * returns: the newly regular transformed transaction
+     */
+    private fun makeTxRegular(tx: Tx): Tx {
+        if(tx.tx_type == TxType.Regular) return tx
+        assert(tx.inputs.isEmpty())
+        assert(tx.outputs.isEmpty())
+        val spender_address: Address = tx.getSenderAddress()
+        val spender_spend_list = client_spent_txo_cache.computeIfAbsent(spender_address) {
+            ConcurrentHashMap.newKeySet()
+        }.toList()
+        val spender_unspent_list = client_utxo_cache.computeIfAbsent(spender_address) {
+            ConcurrentHashMap.newKeySet()
+        }.toList().sortedBy {
+            it.tx_id
+        }
+        assert((spender_spend_list intersect spender_unspent_list).isEmpty())
+
+        val tx_new_utxos: MutableList<UTxO> = mutableListOf()
+        var spare_tr: Tr? = null
+        var coins_to_transfer = tx.rooted_tr!!.coins
+        for(utxo in spender_unspent_list) {
+            if(utxo.coins > coins_to_transfer) {
+                spare_tr = Tr(tx.rooted_tr.source,utxo.coins - coins_to_transfer)
+                coins_to_transfer = 0
+            } else {
+                coins_to_transfer -= utxo.coins
+            }
+            tx_new_utxos.add(utxo)
+            if(coins_to_transfer == 0L) break
+        }
+        if(coins_to_transfer > 0L) throw FailedTransactionException()
+
+        val dest_tr = Tr(tx.rooted_tr.destination,tx.rooted_tr.coins)
+        tx.inputs = tx_new_utxos
+        if(spare_tr == null) {
+            tx.outputs = listOf(dest_tr)
+        } else {
+            tx.outputs = listOf(dest_tr,spare_tr)
+        }
+        tx.tx_type = TxType.Regular
+
+        assert(tx.isLegal())
+        return tx
+    }
+
+    /***
      * throws: FailedTransactionException on failed transactions. Or failed asserts exception.
      *         JVM -ea flag should be enabled
      *
-     * returns: true if the tx was added by the invocation, false if the tx was already in the repo
+     * returns: the committed tx if it was added by the invocation. And an empty tx, if the tx was already in the repo
      */
-    public suspend fun commitTransaction(tx: Tx): Boolean = mutex.withLock {
+    public suspend fun commitTransaction(tx: Tx): Tx = mutex.withLock {
         if(!tx.isLegal()) throw FailedTransactionException()
-        if(tx_cache.contains(tx.tx_id)) return false
+        if(tx_cache.contains(tx.tx_id)) return Tx()
+
+        if(tx.tx_type == TxType.TransferBased) {
+            makeTxRegular(tx)
+        }
+        assert(tx.tx_type == TxType.Regular)
 
         val spender_address: Address = tx.getSenderAddress()
         val spender_spend_set = client_spent_txo_cache.computeIfAbsent(spender_address) {
@@ -64,7 +121,7 @@ class TxRepo {
         }.add(tx)
         tx_cache[tx.tx_id] = tx
         timestamp_ordered_tx_queue.add(tx)
-        return true
+        return tx
     }
 
     /***
@@ -105,13 +162,21 @@ class TxRepo {
         return client_utxo_cache.computeIfAbsent(address) { ConcurrentHashMap.newKeySet() }.toList()
     }
 
-    public fun getClientTxHistory(address: Address): TxList {
-        return TxList(client_tx_cache.computeIfAbsent(address) { PriorityQueue<Tx>
+    public fun getClientTxHistory(address: Address, first_n: Int = -1): TxList {
+        val tx_history_list: List<Tx> = client_tx_cache.computeIfAbsent(address) { PriorityQueue<Tx>
         // Comparator
         { o1, o2 ->
             java.time.ZonedDateTime.parse(o1!!.timestamp).compareTo(java.time.ZonedDateTime.parse(o2!!.timestamp))
         }
-        }.toList())
+        }.toList()
+
+        if(first_n >= 0) {
+            return TxList(tx_history_list.take(first_n))
+        }
+        return TxList(tx_history_list)
     }
 
+    public fun getTx(tx_id: TxID): Tx? {
+        return tx_cache[tx_id]
+    }
 }

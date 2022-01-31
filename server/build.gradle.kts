@@ -60,6 +60,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2")
 
+    // Google Guava Dependencies
+    api("com.google.guava:guava:31.0.1-jre")
+
 }
 
 configurations.all {
