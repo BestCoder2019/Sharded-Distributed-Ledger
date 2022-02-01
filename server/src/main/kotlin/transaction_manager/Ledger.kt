@@ -211,6 +211,7 @@ class LedgerService private constructor(
         val receiver_addresses: List<Address> = tx.getReceiverAddressList()
         assert(getClientShard(tx.getSenderAddress()) == this_shard)
 
+        println("got to mutex lock")
         tx_commit_sync_channel_mutex.lock()
         if(shard_tx_repo.contains(tx.tx_id)) {
             tx_commit_sync_channel_mutex.unlock()
@@ -235,8 +236,10 @@ class LedgerService private constructor(
         tx_commit_status_deferreds[tx.tx_id] = CompletableDeferred()
         tx_commit_sync_channel_mutex.unlock()
 
+        println("tx ${tx.tx_id}sent to atomic broadcast:")
         shard_atomic_broadcast.send(Json.encodeToString(tx))
         val response: Tx = try {
+            println("waiting for answer:")
             tx_commit_status_deferreds[tx.tx_id]!!.await()
         } catch (e: Exception) {
             println("Tx commit status deferred failed!")
@@ -269,6 +272,7 @@ class LedgerService private constructor(
      *
      */
     public suspend fun process(request: Tx): Tx {
+        println("Received Request: ${request}")
         populateTxID(request)
         if(!request.isLegal()) throw BadTransactionException(HttpStatus.BAD_REQUEST,"Tx is illegal!")
 
@@ -276,6 +280,7 @@ class LedgerService private constructor(
         val receiver_shards: List<ShardID> = request.getReceiverAddressList().map { getClientShard(it) }
         val response: Tx
 
+        println("Submitting Request: ${request}")
         if(sender_shard == this_shard) {
             response = Tx(submit(request.getProtoBufferTx()))
         } else {
@@ -298,6 +303,7 @@ class LedgerService private constructor(
                 }
             }
         }
+        println("Got response: ${response}")
         if(response.tx_id.isNotEmpty()) {
             return try {
                 getTx(response.tx_id)!!

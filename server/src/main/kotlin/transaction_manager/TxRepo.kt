@@ -20,6 +20,21 @@ class TxRepo {
 
     private val mutex: Mutex = Mutex()
 
+    init {
+        val genesis_account_address: Address = "0x00000000000000000000000000000000"
+        val genesis_tx_id: TxID = "0x00000000000000000000000000000000"
+        val genesis_utxo = UTxO(genesis_tx_id,genesis_account_address,ULong.MAX_VALUE)
+        val genesis_tr = Tr(genesis_account_address,ULong.MAX_VALUE)
+        val genesis_tx = Tx(genesis_tx_id,emptyList(),listOf(genesis_tr))
+        genesis_tx.timestamp = java.time.ZonedDateTime.now().toString()
+
+        val genesis_is_new = client_utxo_cache.computeIfAbsent(genesis_account_address) { ConcurrentHashMap.newKeySet() }
+            .add(genesis_utxo)
+        assert(genesis_is_new)
+
+        tx_cache[genesis_tx_id] = genesis_tx
+        timestamp_ordered_tx_queue.add(genesis_tx)
+    }
     /***
      * This function finds UTxOs in a deterministic fashion: pick UTxOs in a monotonically increasing order.
      *
@@ -49,14 +64,14 @@ class TxRepo {
         for(utxo in spender_unspent_list) {
             if(utxo.coins > coins_to_transfer) {
                 spare_tr = Tr(tx.rooted_tr.source,utxo.coins - coins_to_transfer)
-                coins_to_transfer = 0
+                coins_to_transfer = 0UL
             } else {
                 coins_to_transfer -= utxo.coins
             }
             tx_new_utxos.add(utxo)
-            if(coins_to_transfer == 0L) break
+            if(coins_to_transfer == 0UL) break
         }
-        if(coins_to_transfer > 0L) throw FailedTransactionException()
+        if(coins_to_transfer > 0UL) throw FailedTransactionException()
 
         val dest_tr = Tr(tx.rooted_tr.destination,tx.rooted_tr.coins)
         tx.inputs = tx_new_utxos

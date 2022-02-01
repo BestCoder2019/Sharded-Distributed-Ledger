@@ -89,13 +89,16 @@ class AtomicBroadcastImpl(
             do {
                 //println("sending to seq, message number: ${last_delivered_number + 1}")
                 try{
-                    val result: AckMessage = sequencers[leader_cache]!!.withDeadlineAfter(2, TimeUnit.SECONDS).broadcastMessage(
+                    val result: AckMessage = sequencers[leader_cache]!!.withDeadlineAfter(5, TimeUnit.SECONDS).broadcastMessage(
                         message {
                             this.value = byteString
                         }
                     )
                     assert(result.ack == Ack.YES)
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    println("AtomicBroadcast: Failed to send message to the Sequencer. Sequencer id=$leader_cache")
+                    println(e)
+                }
 
                 sent_message = byteString
                 assert(is_message_delivered || is_resending)

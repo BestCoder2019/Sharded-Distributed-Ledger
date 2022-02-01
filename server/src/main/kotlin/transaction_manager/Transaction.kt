@@ -2,6 +2,7 @@ package transaction_manager
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonAutoDetect
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import cs236351.txmanager.*
 import kotlinx.serialization.Serializable
 import com.google.common.hash.HashCode
@@ -13,26 +14,29 @@ typealias TxID = String
 typealias Address = String
 
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+@JsonIgnoreProperties(value=["coins-s-VKNKU"])
 @Serializable
 data class UTxO(
     public val tx_id: TxID,
     public val address: Address,
-    public val coins: Long,
+    public val coins: ULong,
 ) { }
 
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+@JsonIgnoreProperties(value=["coins-s-VKNKU"])
 @Serializable
 data class Tr(
     public val address: Address,
-    public val coins: Long,
+    public val coins: ULong,
 ) { }
 
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+@JsonIgnoreProperties(value=["coins-s-VKNKU"])
 @Serializable
 data class RootedTr(
     public val source: Address,
     public val destination: Address,
-    public val coins: Long,
+    public val coins: ULong,
 ) { }
 
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
@@ -63,11 +67,11 @@ data class Tx(
     @JsonIgnore
     constructor(protobuff_tx: cs236351.txmanager.Tx) : this(
         tx_id=protobuff_tx.txId,
-        inputs=protobuff_tx.inputsList.map { UTxO(it.txId, it.address, it.coins) },
-        outputs=protobuff_tx.outputsList.map { Tr(it.address, it.coins) },
+        inputs=protobuff_tx.inputsList.map { UTxO(it.txId, it.address, it.coins.toULong()) },
+        outputs=protobuff_tx.outputsList.map { Tr(it.address, it.coins.toULong()) },
         timestamp=protobuff_tx.timestamp,
         rooted_tr=if(protobuff_tx.rootedTr.source.isNotEmpty()) {
-            RootedTr(protobuff_tx.rootedTr.source,protobuff_tx.rootedTr.destination,protobuff_tx.rootedTr.coins)
+            RootedTr(protobuff_tx.rootedTr.source,protobuff_tx.rootedTr.destination,protobuff_tx.rootedTr.coins.toULong())
                                                                 } else null,
         tx_type=protobuff_tx.txType)
 
@@ -78,18 +82,18 @@ data class Tx(
             this.inputs += this@Tx.inputs.map { uTxO {
                 this.txId = it.tx_id
                 this.address = it.address
-                this.coins = it.coins
+                this.coins = it.coins.toLong()
             } }
             this.outputs += this@Tx.outputs.map { tr {
                 this.address = it.address
-                this.coins = it.coins
+                this.coins = it.coins.toLong()
             } }
             this.txType = this@Tx.tx_type
             if(this.txType == TxType.TransferBased) {
                 this.rootedTr = rootedTr {
                     this.source = this@Tx.rooted_tr!!.source
                     this.destination = this@Tx.rooted_tr.destination
-                    this.coins = this@Tx.rooted_tr.coins
+                    this.coins = this@Tx.rooted_tr.coins.toLong()
                 }
             }
         }

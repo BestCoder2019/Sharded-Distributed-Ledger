@@ -11,12 +11,12 @@ suspend fun main(args: Array<String>) = coroutineScope {
     //val tr_list1 = listOf(Tr("198:99:30:1",50),Tr("198:99:30:2",25),Tr("198:99:30:2",25))
     //val tx1 = Tx("0x00000000150",utxo_list1,tr_list1)
 
-    val utxo_list1 = listOf(UTxO("0x000000001","198:99:30:1",50),UTxO("0x000000001","198:99:30:1",25))
-    val tr_list1 = listOf(Tr("198:99:30:1",50),Tr("198:99:30:2",25))
+    val utxo_list1 = listOf(UTxO("0x000000001","198:99:30:1",50UL),UTxO("0x000000001","198:99:30:1",25UL))
+    val tr_list1 = listOf(Tr("198:99:30:1",50UL),Tr("198:99:30:2",25UL))
     val tx1 = Tx("0x00000000150",utxo_list1,tr_list1)
 
-    val utxo_list2 = listOf(UTxO("0x00000000150","198:99:30:1",50))
-    val tr_list2 = listOf(Tr("198:99:30:1",25),Tr("198:99:30:2",25))
+    val utxo_list2 = listOf(UTxO("0x00000000150","198:99:30:1",50UL))
+    val tr_list2 = listOf(Tr("198:99:30:1",25UL),Tr("198:99:30:2",25UL))
     val tx2 = Tx("0x00000000151",utxo_list2,tr_list2)
 
     val tx_repo = TxRepo()
@@ -60,7 +60,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
     println("client 198:99:30:2 transaction history is: ${tx_repo.getClientTxHistory("198:99:30:2")}")
 
 
-    val rooted_tr = RootedTr("198:99:30:1","198:99:30:2",25)
+    val rooted_tr = RootedTr("198:99:30:1","198:99:30:2",25UL)
     val tx3 = Tx(rooted_tr)
     tx3.tx_id = "0x00000000152"
 
@@ -73,7 +73,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
     println("client 198:99:30:2 transaction history is: ${tx_repo.getClientTxHistory("198:99:30:2")}")
 
 
-    val rooted_tr4 = RootedTr("198:99:30:2","198:99:30:1",55)
+    val rooted_tr4 = RootedTr("198:99:30:2","198:99:30:1",55UL)
     val tx4 = Tx(rooted_tr4)
     tx4.tx_id = "0x00000000153"
 
@@ -86,7 +86,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
     println("client 198:99:30:2 transaction history is: ${tx_repo.getClientTxHistory("198:99:30:2")}")
 
 
-    val rooted_tr5 = RootedTr("198:99:30:2","198:99:30:1",25)
+    val rooted_tr5 = RootedTr("198:99:30:2","198:99:30:1",25UL)
     val tx5 = Tx(rooted_tr5)
     tx5.tx_id = "0x00000000154"
 
@@ -104,7 +104,7 @@ suspend fun main(args: Array<String>) = coroutineScope {
     println("client 198:99:30:2 transaction history is: ${tx_repo.getClientTxHistory("198:99:30:2")}")
 
 
-    val rooted_tr6 = RootedTr("198:99:30:2","198:99:30:1",20)
+    val rooted_tr6 = RootedTr("198:99:30:2","198:99:30:1",20UL)
     val tx6 = Tx(rooted_tr6)
     tx6.tx_id = "0x00000000155"
 

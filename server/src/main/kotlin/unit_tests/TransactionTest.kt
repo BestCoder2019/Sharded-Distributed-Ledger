@@ -8,13 +8,13 @@ import kotlinx.serialization.json.Json
 
 
 suspend fun main(args: Array<String>) = coroutineScope {
-    val utxo_list1 = listOf(UTxO("0x000000001","198:99:30:1",50),UTxO("0x000000001","198:99:30:1",50))
-    val tr_list1 = listOf(Tr("198:99:30:1",50),Tr("198:99:30:2",25),Tr("198:99:30:2",25))
+    val utxo_list1 = listOf(UTxO("0x000000001","198:99:30:1",50UL),UTxO("0x000000001","198:99:30:1",50UL))
+    val tr_list1 = listOf(Tr("198:99:30:1",50UL),Tr("198:99:30:2",25UL),Tr("198:99:30:2",25UL))
     val Tx1 = Tx("0x00000000150",utxo_list1,tr_list1)
 
     testTx(Tx1, 1)
 
-    val rooted_tr2 = RootedTr("198:99:30:1", "198:99:30:2", 50)
+    val rooted_tr2 = RootedTr("198:99:30:1", "198:99:30:2", 50UL)
 
     testTx(Tx(rooted_tr2),2)
 
@@ -25,7 +25,7 @@ fun testTx(Tx1: Tx, id: Int) {
     println("Is Tx${id} Legal: ${Tx1.isLegal()}")
 
     println("Tx Json Conversion Test:")
-    println(ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(Tx1))
+    println(ObjectMapper().writeValueAsString(Tx1))
     println(Tx1.toString())
     val Tx1_json = Json.encodeToString(Tx1)
     println(Tx1_json)
