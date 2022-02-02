@@ -85,13 +85,14 @@ class AtomicBroadcastImpl(
 
         suspend fun sendToSequencer(byteString: ByteString) {
             assert(!byteString.isEmpty)
+            val prepended_byteString: ByteString = biSerializer("@$id:#${last_delivered_number + 1}:").concat(byteString)
 
             do {
                 //println("sending to seq, message number: ${last_delivered_number + 1}")
                 try{
                     val result: AckMessage = sequencers[leader_cache]!!.withDeadlineAfter(5, TimeUnit.SECONDS).broadcastMessage(
                         message {
-                            this.value = byteString
+                            this.value = prepended_byteString
                         }
                     )
                     assert(result.ack == Ack.YES)
@@ -100,7 +101,7 @@ class AtomicBroadcastImpl(
                     println(e)
                 }
 
-                sent_message = byteString
+                sent_message = prepended_byteString
                 assert(is_message_delivered || is_resending)
                 is_message_delivered = false
                 send_sync_chan.send(Unit)
@@ -138,8 +139,7 @@ class AtomicBroadcastImpl(
     }
 
     override suspend fun _send(byteString: ByteString) {
-        val message: ByteString = biSerializer("@$id:").concat(byteString)
-        broadcastSendStream.send(message)
+        broadcastSendStream.send(byteString)
     }
 
     override fun _deliver(byteString: ByteString): List<String> {
@@ -147,7 +147,7 @@ class AtomicBroadcastImpl(
         if(message.startsWith("@$id:")) {
             sequencerSender.latestIsDelivered(byteString)
         }
-        val original_message = message.substringAfter(':')
+        val original_message = message.substringAfter(':').substringAfter(':')
         assert(original_message != message)
         return listOf(original_message)
     }

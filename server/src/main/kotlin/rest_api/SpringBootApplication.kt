@@ -25,11 +25,6 @@ class LedgerApplication(@Value("\${ledger.id}")  private val id: ID) {
 	@Bean
 	fun ledgerService(): LedgerService = runBlocking {
 		mutex.lock()
-		//if(ledgerService != null) {
-		//    mutex.unlock()
-		//    return ledgerService
-		//}
-		println("hey")
 
 		val this_shard = LedgerService.getShard(id)
 		val shard_id_list = listOf(0,1,2)
@@ -69,8 +64,6 @@ class LedgerApplication(@Value("\${ledger.id}")  private val id: ID) {
 			global_ledger_channels,
 		)
 		mutex.unlock()
-
-		println("bye")
 
 		ledgerService
 	}
