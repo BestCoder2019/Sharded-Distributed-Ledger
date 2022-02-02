@@ -123,7 +123,7 @@ class LedgerService private constructor(
 
                 try {
                     if(shard_representative == NoRepresentative) continue
-                    result = rpc(ledgers[shard_representative]!!,2,request)
+                    result = rpc(ledgers[shard_representative]!!,4,request)
                     is_sent = true
                 } catch (e: Exception) {
                     println("Failed to submit tx=$request via gRPC, representative is " +
@@ -145,7 +145,7 @@ class LedgerService private constructor(
             return result!!
         }
 
-        suspend fun notifyShards(remote_receiver_shards: List<ShardID>, request: cs236351.txmanager.Tx) {
+        fun notifyShards(remote_receiver_shards: List<ShardID>, request: cs236351.txmanager.Tx) {
             scope.launch(context) {
                 remote_receiver_shards.map {
                     async(context) {
@@ -263,7 +263,47 @@ class LedgerService private constructor(
         assert(reciever_shards.contains(this_shard) &&
             (getClientShard(sender_address) != this_shard))
 
+        val response: Tx
+        tx_commit_sync_channel_mutex.lock()
+        if(shard_tx_repo.contains(tx.tx_id)) {
+            tx_commit_sync_channel_mutex.unlock()
+            response = try {
+                shard_tx_repo.getTx(tx.tx_id)!!
+            } catch (e: Exception) {
+                println("Internal Error: Tx not found in local shard although it is contained in it!!")
+                println(e)
+                Tx()
+            }
+            assert(response.tx_id.isNotEmpty())
+            return empty { }
+        }
+        if(tx_commit_status_deferreds.contains(tx.tx_id)) {
+            tx_commit_sync_channel_mutex.unlock()
+            response = try {
+                tx_commit_status_deferreds[tx.tx_id]!!.await()
+            } catch (e: Exception) {
+                println("Tx commit status deferred failed!")
+                println(e)
+                Tx()
+            }
+            assert(response.tx_id.isNotEmpty())
+            return empty { }
+        }
+        tx_commit_status_deferreds[tx.tx_id] = CompletableDeferred()
+        tx_commit_sync_channel_mutex.unlock()
+
+        println("tx ${tx.tx_id}sent to atomic broadcast:")
         shard_atomic_broadcast.send(Json.encodeToString(tx))
+        response = try {
+            println("waiting for answer:")
+            tx_commit_status_deferreds[tx.tx_id]!!.await()
+        } catch (e: Exception) {
+            println("Tx commit status deferred failed!")
+            println(e)
+            Tx()
+        }
+        assert(response.tx_id.isNotEmpty())
+
         return empty { }
     }
 
